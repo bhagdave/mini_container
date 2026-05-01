@@ -24,8 +24,8 @@ fn main() {
         )
         .subcommand(
             SubCommand::with_name("deploy")
-                .about("Deploys a file or directory to the container root")
-                .arg(Arg::with_name("PATH").required(true).index(1)),
+                .about("Deploys files or directories to the container root")
+                .arg(Arg::with_name("PATHS").required(true).multiple(true).index(1)),
         )
         .get_matches();
 
@@ -36,8 +36,8 @@ fn main() {
             run_container(cmd, args);
         }
     } else if let Some(matches) = matches.subcommand_matches("deploy") {
-        let path = matches.value_of("PATH").unwrap();
-        deploy_contaner(path);
+        let paths: Vec<&str> = matches.values_of("PATHS").unwrap().collect();
+        deploy_container(paths);
     } else {
         println!("No subcommand was used");
     }
@@ -46,15 +46,36 @@ fn main() {
 
 
 
-fn deploy_contaner(path: &str) {
+fn deploy_container(paths: Vec<&str>) {
+    let newroot = Path::new("newroot");
+    std::fs::create_dir_all(newroot).expect("Failed to create newroot");
 
-    let newroot = Path::new("newroot/bin");
-    std::fs::create_dir_all(&newroot).expect("Failed to create newroot/bin");
+    for path in paths {
+        let source = Path::new(path);
+        let deploy_name = source.file_name().expect("Failed to determine source name");
+        let deploy_path = newroot.join(deploy_name);
+        copy_into_root(source, &deploy_path);
+    }
+}
 
-    let deploy_path = newroot.join(Path::new(path).file_name().unwrap());
+fn copy_into_root(source: &Path, destination: &Path) {
+    if source.is_dir() {
+        fs::create_dir_all(destination).expect("Failed to create destination directory");
 
-    std::fs::copy(path, &deploy_path).expect("Failed to deploy the app");
-    println!("Deployed the app to {:?}", deploy_path);
+        for entry in fs::read_dir(source).expect("Failed to read source directory") {
+            let entry = entry.expect("Failed to read directory entry");
+            let source_path = entry.path();
+            let destination_path = destination.join(entry.file_name());
+            copy_into_root(&source_path, &destination_path);
+        }
+    } else {
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent).expect("Failed to create parent directory");
+        }
+
+        fs::copy(source, destination).expect("Failed to deploy file");
+        println!("Deployed {:?} to {:?}", source, destination);
+    }
 }
 
 unsafe fn run_container(cmd: &str,args: Vec<&str>) {
@@ -115,5 +136,4 @@ fn is_proc_mounted() -> bool {
     }
     false
 }
-
 
